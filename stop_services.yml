@@ -1,0 +1,24 @@
+---
+- name: Stop application services
+  hosts: all
+  become: yes
+  gather_facts: no
+
+  vars:
+    services:
+      - jboss
+      - cognos
+      - validatadiskfiled
+      - validatataskrunnerd
+      - carsdiskfiled
+
+  tasks:
+    - name: Collect service facts
+      ansible.builtin.service_facts:
+
+    - name: Stop only existing services
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: stopped
+      loop: "{{ services }}"
+      when: ansible_facts.services[item] is defined

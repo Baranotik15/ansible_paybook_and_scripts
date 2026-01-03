@@ -1,0 +1,52 @@
+---
+- name: Smart restart application services with force-kill fallback
+  hosts: all
+  become: yes
+  gather_facts: no
+
+  vars:
+    services:
+      - jboss
+      - validatadiskfiled
+      - validatataskrunnerd
+      - carsdiskfiled
+      - cognos
+
+  tasks:
+
+    - name: Collect service facts
+      ansible.builtin.service_facts:
+
+    - name: Stop running services
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: stopped
+      loop: "{{ services }}"
+      when: ansible_facts.services[item].state is defined
+        and ansible_facts.services[item].state == "running"
+
+    - name: Wait 2 minutes for graceful shutdown
+      ansible.builtin.pause:
+        seconds: 120
+
+    - name: Detect leftover processes
+      ansible.builtin.shell: |
+        pgrep -f "{{ item | regex_replace('.service','') }}" || true
+      register: leftover_pids
+      loop: "{{ services }}"
+      changed_when: false
+
+    - name: Force kill leftover processes (safe)
+      ansible.builtin.shell: |
+        echo "{{ item.stdout }}" | xargs -r kill -9 || true
+      loop: "{{ leftover_pids.results }}"
+      when: item.stdout | length > 0
+      changed_when: true
+      failed_when: false
+
+    - name: Start existing services
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: started
+      loop: "{{ services }}"
+      when: ansible_facts.services[item].state is defined
